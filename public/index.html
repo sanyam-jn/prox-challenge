@@ -1,0 +1,674 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vulcan OmniPro 220 — AI Assistant</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:       #07070f;
+      --s1:       #111120;
+      --s2:       #1a1a2e;
+      --border:   #ffffff0e;
+      --accent:   #f59e0b;
+      --accent2:  #fbbf24;
+      --text:     #e2e8f0;
+      --dim:      #64748b;
+      --red:      #ef4444;
+      --green:    #22c55e;
+      --blue:     #3b82f6;
+    }
+
+    html, body { height: 100%; overflow: hidden; }
+    body {
+      background: var(--bg); color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      display: flex; flex-direction: column; height: 100vh;
+    }
+
+    /* ── Header ─────────────────────────────────────────── */
+    header {
+      flex-shrink: 0;
+      display: flex; align-items: center; gap: 14px;
+      padding: 13px 24px;
+      background: var(--s1);
+      border-bottom: 1px solid var(--border);
+    }
+    .logo {
+      width: 36px; height: 36px; flex-shrink: 0;
+      background: linear-gradient(135deg, #f59e0b 0%, #dc2626 100%);
+      border-radius: 9px;
+      display: flex; align-items: center; justify-content: center; font-size: 19px;
+    }
+    header h1 { font-size: 15px; font-weight: 700; color: var(--accent); }
+    header p  { font-size: 11px; color: var(--dim); margin-top: 1px; }
+    .badge {
+      margin-left: auto;
+      padding: 4px 12px; border-radius: 20px;
+      background: var(--s2); border: 1px solid var(--border);
+      font-size: 11px; color: var(--dim);
+    }
+
+    /* ── Chat ────────────────────────────────────────────── */
+    #chat {
+      flex: 1; overflow-y: auto;
+      padding: 28px 24px;
+      display: flex; flex-direction: column; gap: 22px;
+    }
+
+    /* ── Welcome ─────────────────────────────────────────── */
+    #welcome {
+      margin: auto;
+      display: flex; flex-direction: column; align-items: center;
+      gap: 22px; text-align: center; max-width: 680px; padding: 40px 0;
+    }
+    .welcome-icon { font-size: 50px; }
+    #welcome h2 { font-size: 22px; color: var(--accent); }
+    #welcome p  { font-size: 14px; color: var(--dim); line-height: 1.7; max-width: 480px; }
+    .examples {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 8px; width: 100%;
+    }
+    .ex {
+      background: var(--s1); border: 1px solid var(--border); border-radius: 10px;
+      padding: 11px 14px; cursor: pointer; font-size: 12.5px; color: var(--dim);
+      text-align: left; line-height: 1.45;
+      transition: border-color .15s, color .15s, background .15s;
+    }
+    .ex:hover { border-color: var(--accent); color: var(--text); background: var(--s2); }
+
+    /* ── Messages ────────────────────────────────────────── */
+    .msg { display: flex; flex-direction: column; max-width: 880px; width: 100%; }
+    .msg.user  { align-self: flex-end; align-items: flex-end; }
+    .msg.agent { align-self: flex-start; }
+    .msg-label {
+      font-size: 10px; color: var(--dim); margin-bottom: 5px;
+      padding: 0 4px; letter-spacing: .06em; text-transform: uppercase;
+    }
+    .bubble {
+      padding: 14px 18px; border-radius: 14px; line-height: 1.65; font-size: 14px;
+    }
+    .msg.user  .bubble { background: #1e3a5f; border: 1px solid #1e40af33; border-bottom-right-radius: 4px; }
+    .msg.agent .bubble { background: var(--s1); border: 1px solid var(--border); border-bottom-left-radius: 4px; }
+    .bubble .uimg { max-width: 220px; border-radius: 8px; margin-bottom: 8px; display: block; border: 1px solid #1e40af33; }
+
+    /* ── Inline visualizations ───────────────────────────── */
+    .bubble .viz { margin: 14px 0; overflow-x: auto; }
+    .bubble .dtable { border-collapse: collapse; min-width: 340px; font-size: 13px; }
+    .bubble .dtable th { background: #1e293b; color: var(--accent); padding: 9px 14px; text-align: left; border: 1px solid #334155; font-size: 12px; font-weight: 600; letter-spacing: .03em; }
+    .bubble .dtable td { padding: 8px 14px; border: 1px solid #1e293b; color: var(--text); }
+    .bubble .dtable tbody tr:nth-child(even) td { background: #0b0b18; }
+    .bubble .dtable tbody tr:hover td { background: #1e293b; }
+    .bubble .dtable .good { color: #4ade80; font-weight: 600; }
+    .bubble .dtable .warn { color: #fbbf24; font-weight: 600; }
+    .bubble .dtable .bad  { color: #f87171; font-weight: 600; }
+    .bubble .warn-box { background: #2d0f0f; border: 1px solid #ef444444; border-left: 4px solid #ef4444; padding: 10px 14px; border-radius: 7px; margin: 12px 0; font-size: 13px; color: #fca5a5; line-height: 1.6; }
+    .bubble .tip-box  { background: #0a2a14; border: 1px solid #22c55e44; border-left: 4px solid #22c55e; padding: 10px 14px; border-radius: 7px; margin: 12px 0; font-size: 13px; color: #86efac; line-height: 1.6; }
+
+    /* Manual page images embedded in responses */
+    .bubble .manual-page {
+      max-width: 100%; border-radius: 8px; margin: 14px 0; display: block;
+      border: 1px solid var(--border);
+      cursor: zoom-in;
+      transition: transform .2s;
+    }
+    .bubble .manual-page:hover { transform: scale(1.01); }
+
+    /* ── Artifact frame ──────────────────────────────────── */
+    .artifact-frame {
+      margin: 14px 0;
+      border: 1px solid #f59e0b33;
+      border-radius: 12px;
+      overflow: hidden;
+      background: var(--bg);
+    }
+    .artifact-titlebar {
+      display: flex; align-items: center; gap: 8px;
+      padding: 9px 14px;
+      background: #1a1a2e;
+      border-bottom: 1px solid #f59e0b22;
+      font-size: 12px; color: var(--accent); font-weight: 600;
+    }
+    .artifact-titlebar span { font-size: 14px; }
+    .artifact-titlebar .expand-btn {
+      margin-left: auto; background: transparent; border: 1px solid var(--border);
+      color: var(--dim); border-radius: 6px; padding: 3px 10px; font-size: 11px;
+      cursor: pointer; transition: border-color .15s, color .15s;
+    }
+    .artifact-titlebar .expand-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .artifact-iframe {
+      width: 100%; border: none; display: block;
+      min-height: 200px; background: var(--bg);
+    }
+
+    /* Lightbox for expanded artifacts */
+    #lightbox {
+      display: none; position: fixed; inset: 0; z-index: 200;
+      background: #000000cc; align-items: center; justify-content: center; padding: 24px;
+    }
+    #lightbox.open { display: flex; }
+    #lightbox-inner {
+      background: var(--bg); border: 1px solid var(--border);
+      border-radius: 14px; width: 100%; max-width: 1100px;
+      max-height: 90vh; overflow: hidden; display: flex; flex-direction: column;
+    }
+    #lightbox-bar {
+      display: flex; align-items: center; padding: 10px 16px;
+      border-bottom: 1px solid var(--border);
+      background: var(--s1);
+    }
+    #lightbox-title { font-size: 13px; color: var(--accent); font-weight: 600; }
+    #lightbox-close { margin-left: auto; background: transparent; border: none; color: var(--dim); font-size: 20px; cursor: pointer; padding: 2px 8px; }
+    #lightbox-close:hover { color: var(--text); }
+    #lightbox-iframe { flex: 1; border: none; width: 100%; background: var(--bg); }
+
+    /* ── Loading bubble ──────────────────────────────────── */
+    .loading-wrap { display: flex; flex-direction: column; gap: 0; }
+    .loading-bubble {
+      display: flex; align-items: center; gap: 10px;
+      padding: 13px 18px; background: var(--s1);
+      border: 1px solid var(--border); border-radius: 14px; border-bottom-left-radius: 4px;
+    }
+    .dots { display: flex; gap: 5px; }
+    .dot  { width: 7px; height: 7px; background: var(--accent); border-radius: 50%; animation: bounce 1.3s infinite; }
+    .dot:nth-child(2) { animation-delay: .18s; }
+    .dot:nth-child(3) { animation-delay: .36s; }
+    @keyframes bounce { 0%,60%,100% { transform:translateY(0);opacity:.35; } 30% { transform:translateY(-7px);opacity:1; } }
+    .status-log {
+      padding: 6px 14px;
+      font-size: 11px; color: var(--dim); font-family: monospace;
+      max-height: 60px; overflow: hidden;
+    }
+    .status-line { line-height: 1.6; }
+
+    /* ── Message markdown ────────────────────────────────── */
+    .bubble strong { color: var(--accent2); }
+    .bubble em     { color: var(--dim); font-style: italic; }
+    .bubble code   { background: #0f172a; border: 1px solid #334155; padding: 1px 6px; border-radius: 4px; font-family: 'SF Mono', monospace; font-size: 12px; }
+    .bubble h3     { color: var(--accent); font-size: 14px; margin: 14px 0 6px; }
+    .bubble p      { margin-bottom: 8px; }
+    .bubble ul, .bubble ol { margin: 8px 0 8px 20px; }
+    .bubble li     { margin-bottom: 4px; font-size: 13px; }
+
+    /* ── Fade in ─────────────────────────────────────────── */
+    @keyframes fadein { from { opacity:0; transform:translateY(6px); } to { opacity:1; transform:none; } }
+    .msg { animation: fadein .2s ease; }
+
+    /* ── Input ───────────────────────────────────────────── */
+    #input-area {
+      flex-shrink: 0;
+      background: var(--s1); border-top: 1px solid var(--border);
+      padding: 14px 24px;
+    }
+    .input-inner { max-width: 880px; margin: 0 auto; }
+    #previews { display: flex; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
+    .preview { position: relative; width: 56px; height: 56px; }
+    .preview img { width: 56px; height: 56px; object-fit: cover; border-radius: 7px; border: 1px solid var(--accent); }
+    .preview .rm { position: absolute; top: -5px; right: -5px; background: var(--red); color: #fff; border: none; border-radius: 50%; width: 17px; height: 17px; cursor: pointer; font-size: 11px; display: flex; align-items: center; justify-content: center; }
+    .input-row { display: flex; gap: 8px; align-items: flex-end; }
+    #attach-btn { background: transparent; border: 1px solid var(--border); border-radius: 10px; color: var(--dim); padding: 11px 14px; cursor: pointer; font-size: 16px; transition: border-color .15s, color .15s; flex-shrink: 0; }
+    #attach-btn:hover { border-color: var(--accent); color: var(--accent); }
+    #msg-input { flex: 1; background: var(--bg); border: 1px solid #334155; border-radius: 10px; padding: 11px 16px; color: var(--text); font-size: 14px; font-family: inherit; resize: none; outline: none; min-height: 46px; max-height: 140px; line-height: 1.5; transition: border-color .15s; }
+    #msg-input:focus { border-color: var(--accent); }
+    #msg-input::placeholder { color: var(--dim); }
+    #send-btn { background: var(--accent); color: #07070f; border: none; border-radius: 10px; padding: 11px 20px; cursor: pointer; font-weight: 700; font-size: 14px; flex-shrink: 0; transition: background .15s; }
+    #send-btn:hover    { background: var(--accent2); }
+    #send-btn:disabled { background: #374151; color: #6b7280; cursor: not-allowed; }
+    .hint { font-size: 11px; color: var(--dim); margin-top: 7px; text-align: center; }
+
+    /* ── Scrollbar ───────────────────────────────────────── */
+    #chat::-webkit-scrollbar { width: 5px; }
+    #chat::-webkit-scrollbar-track { background: transparent; }
+    #chat::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+
+    /* ── Drop overlay ────────────────────────────────────── */
+    #drop-overlay { display: none; position: fixed; inset: 0; background: #f59e0b12; border: 3px dashed var(--accent); z-index: 100; align-items: center; justify-content: center; font-size: 22px; color: var(--accent); pointer-events: none; }
+    #drop-overlay.active { display: flex; }
+
+    /* ── Settings panel ──────────────────────────────────── */
+    #settings-overlay { display:none; position:fixed; inset:0; background:#00000088; z-index:300; }
+    #settings-overlay.open { display:block; }
+    #settings-panel {
+      position: fixed; top:0; right:0; bottom:0; width:360px; max-width:95vw;
+      background: var(--s1); border-left:1px solid var(--border);
+      display:flex; flex-direction:column; z-index:301;
+      transform: translateX(100%); transition: transform .25s ease;
+    }
+    #settings-overlay.open #settings-panel { transform: translateX(0); }
+    .settings-header {
+      display:flex; align-items:center; justify-content:space-between;
+      padding: 16px 20px; border-bottom:1px solid var(--border);
+    }
+    .settings-header h2 { font-size:15px; color:var(--accent); font-weight:600; }
+    #close-settings { background:transparent; border:none; color:var(--dim); font-size:22px; cursor:pointer; padding:0 4px; line-height:1; }
+    #close-settings:hover { color:var(--text); }
+    .settings-body { flex:1; overflow-y:auto; padding:20px; display:flex; flex-direction:column; gap:20px; }
+    .setting-group label { display:block; font-size:11px; color:var(--dim); letter-spacing:.05em; text-transform:uppercase; margin-bottom:6px; }
+    .setting-group input, .setting-group select {
+      width:100%; background:var(--bg); border:1px solid #334155; border-radius:8px;
+      padding:10px 12px; color:var(--text); font-size:13px; font-family:inherit; outline:none;
+      transition:border-color .15s;
+    }
+    .setting-group input:focus, .setting-group select:focus { border-color:var(--accent); }
+    .setting-group .hint { font-size:11px; color:var(--dim); margin-top:5px; line-height:1.5; }
+    .setting-group .hint a { color:var(--accent); text-decoration:none; }
+    .key-status { display:flex; align-items:center; gap:6px; font-size:12px; margin-top:6px; }
+    .key-dot { width:7px; height:7px; border-radius:50%; background:var(--dim); }
+    .key-dot.set { background:var(--green); }
+    #save-settings {
+      margin:0 20px 20px; background:var(--accent); color:#07070f; border:none;
+      border-radius:8px; padding:11px; font-weight:700; font-size:14px; cursor:pointer;
+      transition:background .15s;
+    }
+    #save-settings:hover { background:var(--accent2); }
+    .settings-divider { border:none; border-top:1px solid var(--border); margin:0; }
+    .settings-info { font-size:12px; color:var(--dim); line-height:1.6; }
+    /* Key missing warning in chat */
+    .no-key-banner {
+      margin: 0 auto; max-width:880px; width:100%;
+      background:#1a1a0a; border:1px solid #f59e0b55; border-radius:10px;
+      padding:10px 16px; font-size:13px; color:var(--accent);
+      display:flex; align-items:center; gap:10px;
+    }
+    .no-key-banner button {
+      margin-left:auto; background:var(--accent); color:#07070f; border:none;
+      border-radius:6px; padding:5px 12px; font-size:12px; font-weight:600; cursor:pointer;
+    }
+    #settings-gear {
+      background:transparent; border:1px solid var(--border); border-radius:8px;
+      color:var(--dim); padding:6px 10px; cursor:pointer; font-size:15px;
+      transition:border-color .15s, color .15s;
+    }
+    #settings-gear:hover { border-color:var(--accent); color:var(--accent); }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="logo">🔥</div>
+  <div>
+    <h1>Vulcan OmniPro 220</h1>
+    <p>AI Technical Assistant</p>
+  </div>
+  <button id="settings-gear" onclick="openSettings()" title="Settings">⚙</button>
+</header>
+
+<!-- Settings panel -->
+<div id="settings-overlay" onclick="overlayClick(event)">
+  <div id="settings-panel">
+    <div class="settings-header">
+      <h2>⚙ Settings</h2>
+      <button id="close-settings" onclick="closeSettings()">×</button>
+    </div>
+    <div class="settings-body">
+      <div class="setting-group">
+        <label>Anthropic API Key</label>
+        <input type="password" id="key-input" placeholder="sk-ant-…" autocomplete="off">
+        <div class="key-status">
+          <div class="key-dot" id="key-dot"></div>
+          <span id="key-status-text">No key saved</span>
+        </div>
+        <p class="hint">
+          Your key is stored only in your browser's localStorage — never sent to any server
+          except Anthropic's API directly.<br>
+          Get a key at <a href="https://console.anthropic.com" target="_blank">console.anthropic.com</a>
+        </p>
+      </div>
+      <hr class="settings-divider">
+      <div class="setting-group">
+        <label>Model</label>
+        <select id="model-select">
+          <option value="claude-sonnet-4-6">Claude Sonnet 4.6 — fast &amp; capable (default)</option>
+          <option value="claude-opus-4-7">Claude Opus 4.7 — most powerful, slower</option>
+          <option value="claude-haiku-4-5-20251001">Claude Haiku 4.5 — fastest, lightweight</option>
+        </select>
+        <p class="hint">Opus gives the best diagrams; Haiku is fastest for simple lookups.</p>
+      </div>
+      <hr class="settings-divider">
+      <p class="settings-info">
+        This assistant searches the Vulcan OmniPro 220 owner's manual, quick-start guide,
+        and selection chart using TF-IDF retrieval + Claude vision to read diagrams directly.
+        Responses include interactive calculators and wiring diagrams.
+      </p>
+    </div>
+    <button id="save-settings" onclick="saveSettings()">Save Settings</button>
+  </div>
+</div>
+
+<div id="chat">
+  <div id="no-key-banner" class="no-key-banner" style="display:none">
+    ⚠ No API key set — responses will fail.
+    <button onclick="openSettings()">Add Key</button>
+  </div>
+  <div id="welcome">
+    <div class="welcome-icon">⚡</div>
+    <h2>OmniPro 220 Expert</h2>
+    <p>Ask anything about your welder. Duty cycles, polarity, settings, wiring, troubleshooting.
+       Upload a weld photo for instant diagnosis.</p>
+    <div class="examples">
+      <button class="ex" onclick="useEx(this)">What's the duty cycle at 200A on 240V?</button>
+      <button class="ex" onclick="useEx(this)">How do I set up polarity for flux-core?</button>
+      <button class="ex" onclick="useEx(this)">Show me the TIG torch wiring diagram</button>
+      <button class="ex" onclick="useEx(this)">Settings configurator for MIG on 1/4" steel</button>
+      <button class="ex" onclick="useEx(this)">Build me a troubleshooting flowchart for porosity</button>
+      <button class="ex" onclick="useEx(this)">Compare all duty cycles across processes and voltages</button>
+    </div>
+  </div>
+</div>
+
+<div id="input-area">
+  <div class="input-inner">
+    <div id="previews"></div>
+    <div class="input-row">
+      <button id="attach-btn" title="Attach image" onclick="document.getElementById('file-in').click()">📎</button>
+      <input type="file" id="file-in" accept="image/*" multiple style="display:none" onchange="handleFiles(event)">
+      <textarea id="msg-input" rows="1"
+        placeholder="Ask about your Vulcan OmniPro 220…"
+        onkeydown="onKey(event)" oninput="grow(this)"></textarea>
+      <button id="send-btn" onclick="send()">Send</button>
+    </div>
+    <p class="hint">Shift+Enter for newline · paste or drag images to attach</p>
+  </div>
+</div>
+
+<div id="drop-overlay">Drop image to attach</div>
+
+<!-- Lightbox for expanded artifacts -->
+<div id="lightbox" onclick="closeLightbox(event)">
+  <div id="lightbox-inner">
+    <div id="lightbox-bar">
+      <span id="lightbox-title"></span>
+      <button id="lightbox-close" onclick="closeLightbox()">×</button>
+    </div>
+    <iframe id="lightbox-iframe" sandbox="allow-scripts" title="artifact"></iframe>
+  </div>
+</div>
+
+<script>
+  const chat      = document.getElementById('chat');
+  const input     = document.getElementById('msg-input');
+  const sendBtn   = document.getElementById('send-btn');
+  const previewEl = document.getElementById('previews');
+
+  let attached = [];
+
+  /* ── Settings ─────────────────────────────────── */
+  const SETTINGS = {
+    apiKey: localStorage.getItem('omnipro_api_key') || '',
+    model:  localStorage.getItem('omnipro_model')   || 'claude-sonnet-4-6',
+  };
+
+  function refreshKeyStatus() {
+    const dot  = document.getElementById('key-dot');
+    const txt  = document.getElementById('key-status-text');
+    const banner = document.getElementById('no-key-banner');
+    if (SETTINGS.apiKey) {
+      dot.classList.add('set');
+      txt.textContent = 'Key saved ✓';
+      banner.style.display = 'none';
+    } else {
+      dot.classList.remove('set');
+      txt.textContent = 'No key saved';
+      banner.style.display = 'flex';
+    }
+  }
+
+  function openSettings() {
+    document.getElementById('key-input').value = SETTINGS.apiKey;
+    document.getElementById('model-select').value = SETTINGS.model;
+    document.getElementById('settings-overlay').classList.add('open');
+  }
+  function closeSettings() {
+    document.getElementById('settings-overlay').classList.remove('open');
+  }
+  function overlayClick(e) {
+    if (e.target === document.getElementById('settings-overlay')) closeSettings();
+  }
+  function saveSettings() {
+    SETTINGS.apiKey = document.getElementById('key-input').value.trim();
+    SETTINGS.model  = document.getElementById('model-select').value;
+    localStorage.setItem('omnipro_api_key', SETTINGS.apiKey);
+    localStorage.setItem('omnipro_model',   SETTINGS.model);
+    refreshKeyStatus();
+    closeSettings();
+  }
+
+  // Init on load
+  refreshKeyStatus();
+
+  /* ── Textarea ─────────────────────────────────── */
+  function grow(el) {
+    el.style.height = 'auto';
+    el.style.height = Math.min(el.scrollHeight, 140) + 'px';
+  }
+  function onKey(e) {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
+  }
+  function useEx(btn) { input.value = btn.innerText; grow(input); send(); }
+
+  /* ── Image handling ───────────────────────────── */
+  function handleFiles(ev) { [...ev.target.files].forEach(addFile); ev.target.value = ''; }
+  function addFile(file) {
+    const r = new FileReader();
+    r.onload = e => { attached.push({ url: e.target.result, b64: e.target.result.split(',')[1] }); renderPreviews(); };
+    r.readAsDataURL(file);
+  }
+  function renderPreviews() {
+    previewEl.innerHTML = attached.map((a, i) => `
+      <div class="preview">
+        <img src="${a.url}" alt="">
+        <button class="rm" onclick="removeImg(${i})">×</button>
+      </div>`).join('');
+  }
+  function removeImg(i) { attached.splice(i, 1); renderPreviews(); }
+
+  /* ── Drag & drop ──────────────────────────────── */
+  const overlay = document.getElementById('drop-overlay');
+  document.addEventListener('dragover', e => { e.preventDefault(); overlay.classList.add('active'); });
+  document.addEventListener('dragleave', e => { if (!e.relatedTarget) overlay.classList.remove('active'); });
+  document.addEventListener('drop', e => {
+    e.preventDefault(); overlay.classList.remove('active');
+    [...e.dataTransfer.files].filter(f => f.type.startsWith('image/')).forEach(addFile);
+  });
+  document.addEventListener('paste', e => {
+    [...(e.clipboardData.files || [])].filter(f => f.type.startsWith('image/')).forEach(addFile);
+  });
+
+  /* ── Send ─────────────────────────────────────── */
+  async function send() {
+    const text = input.value.trim();
+    const imgs = [...attached];
+    if (!text && !imgs.length) return;
+
+    document.getElementById('welcome')?.remove();
+
+    appendUser(text, imgs);
+    input.value = ''; grow(input);
+    attached = []; renderPreviews();
+
+    const { loaderEl, statusEl } = appendLoader();
+    sendBtn.disabled = true;
+
+    try {
+      const res = await fetch('/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          message: text,
+          images:  imgs.map(i => i.b64),
+          api_key: SETTINGS.apiKey || undefined,
+          model:   SETTINGS.model  || undefined,
+        }),
+      });
+
+      const reader = res.body.getReader();
+      const dec    = new TextDecoder();
+      let buf      = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+
+        // Process complete SSE lines
+        const lines = buf.split('\n');
+        buf = lines.pop(); // keep incomplete line
+
+        for (const line of lines) {
+          if (!line.startsWith('data: ')) continue;
+          const event = JSON.parse(line.slice(6));
+
+          if (event.type === 'status') {
+            const p = document.createElement('div');
+            p.className = 'status-line';
+            p.textContent = '› ' + event.text;
+            statusEl.appendChild(p);
+            statusEl.scrollTop = statusEl.scrollHeight;
+
+          } else if (event.type === 'response') {
+            loaderEl.remove();
+            appendAgent(event.text);
+
+          } else if (event.type === 'error') {
+            loaderEl.remove();
+            appendAgent(`<div class="warn-box">⚠ ${esc(event.text)}</div>`);
+          }
+        }
+      }
+    } catch (err) {
+      loaderEl.remove();
+      appendAgent(`<div class="warn-box">⚠ ${esc(err.message)}</div>`);
+    } finally {
+      sendBtn.disabled = false;
+      input.focus();
+    }
+  }
+
+  /* ── Message builders ─────────────────────────── */
+  function appendUser(text, imgs) {
+    let html = imgs.map(i => `<img class="uimg" src="${i.url}" alt="">`).join('');
+    if (text) html += `<p>${esc(text)}</p>`;
+    addMsg('user', 'You', html);
+  }
+
+  function appendAgent(rawHtml) {
+    const { text, artifacts } = extractArtifacts(rawHtml);
+    const html = renderMd(text);
+    const div = addMsg('agent', 'OmniPro&nbsp;Assistant', html);
+    const bubble = div.querySelector('.bubble');
+
+    artifacts.forEach(a => {
+      const frame = buildArtifactFrame(a);
+      bubble.appendChild(frame);
+    });
+  }
+
+  function addMsg(role, label, html) {
+    const div = document.createElement('div');
+    div.className = `msg ${role}`;
+    div.innerHTML = `<div class="msg-label">${label}</div><div class="bubble">${html}</div>`;
+    chat.appendChild(div);
+    chat.scrollTop = chat.scrollHeight;
+    return div;
+  }
+
+  function appendLoader() {
+    const div = document.createElement('div');
+    div.className = 'msg agent';
+    const statusId = 'sl-' + Date.now();
+    div.innerHTML = `
+      <div class="msg-label">OmniPro&nbsp;Assistant</div>
+      <div class="loading-wrap">
+        <div class="loading-bubble">
+          <div class="dots"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div>
+          <span style="font-size:12px;color:var(--dim)">Consulting the manual…</span>
+        </div>
+        <div class="status-log" id="${statusId}"></div>
+      </div>`;
+    chat.appendChild(div);
+    chat.scrollTop = chat.scrollHeight;
+    return { loaderEl: div, statusEl: document.getElementById(statusId) };
+  }
+
+  /* ── Artifact extraction ──────────────────────── */
+  function extractArtifacts(text) {
+    const artifacts = [];
+    const clean = text.replace(
+      /<artifact\s+title="([^"]*)">([\s\S]*?)<\/artifact>/gi,
+      (_, title, html) => { artifacts.push({ title, html: html.trim() }); return ''; }
+    );
+    return { text: clean.trim(), artifacts };
+  }
+
+  function buildArtifactFrame({ title, html }) {
+    const frame = document.createElement('div');
+    frame.className = 'artifact-frame';
+    frame.innerHTML = `
+      <div class="artifact-titlebar">
+        <span>⚡</span> ${esc(title)}
+        <button class="expand-btn" onclick="openLightbox(this)">Expand ↗</button>
+      </div>
+      <iframe class="artifact-iframe" sandbox="allow-scripts" title="${esc(title)}"></iframe>`;
+
+    const iframe = frame.querySelector('iframe');
+    // Store HTML for lightbox
+    frame._artifactHtml  = html;
+    frame._artifactTitle = title;
+
+    iframe.srcdoc = html;
+    iframe.onload = () => {
+      try {
+        const h = iframe.contentDocument?.body?.scrollHeight;
+        if (h) iframe.style.height = Math.min(Math.max(h + 24, 180), 650) + 'px';
+      } catch (_) {}
+    };
+
+    return frame;
+  }
+
+  /* ── Lightbox ─────────────────────────────────── */
+  function openLightbox(btn) {
+    const frame = btn.closest('.artifact-frame');
+    document.getElementById('lightbox-title').textContent = frame._artifactTitle;
+    const lb = document.getElementById('lightbox-iframe');
+    lb.srcdoc = frame._artifactHtml;
+    lb.style.height = '70vh';
+    document.getElementById('lightbox').classList.add('open');
+  }
+  function closeLightbox(e) {
+    if (!e || e.target === document.getElementById('lightbox') || e.currentTarget === document.getElementById('lightbox-close')) {
+      document.getElementById('lightbox').classList.remove('open');
+      document.getElementById('lightbox-iframe').srcdoc = '';
+    }
+  }
+
+  /* ── Markdown renderer ────────────────────────── */
+  function renderMd(text) {
+    // Split on HTML block elements (pass through), process text spans as markdown
+    const parts = text.split(
+      /(<(?:div|table|svg|thead|tbody|tr|th|td|ul|ol|li|h[1-6]|img|pre|hr|br)[^>]*(?:\/>|>[\s\S]*?<\/(?:div|table|svg|thead|tbody|tr|th|td|ul|ol|li|h[1-6]|pre)>))/gi
+    );
+    return parts.map((part, i) => {
+      if (i % 2 === 1) return part; // HTML block — pass through as-is
+      let s = part;
+      s = s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+      s = s.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+      s = s.replace(/\*([^*\n]+)\*/g, '<em>$1</em>');
+      s = s.replace(/`([^`\n]+)`/g, '<code>$1</code>');
+      s = s.replace(/^### (.+)$/gm, '<h3>$1</h3>');
+      s = s.replace(/^## (.+)$/gm,  '<h3>$1</h3>');
+      s = s.replace(/\n\n/g, '</p><p>');
+      s = s.replace(/\n/g, '<br>');
+      return s ? `<p>${s}</p>` : '';
+    }).join('');
+  }
+
+  function esc(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  input.focus();
+</script>
+</body>
+</html>

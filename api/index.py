@@ -1,26 +1,28 @@
-"""Local development server — includes static file serving."""
+"""Vercel serverless entry point — wraps the agent with chat + health routes."""
 import asyncio
 import json
 import os
+import sys
 from concurrent.futures import ThreadPoolExecutor
 from typing import Optional
 
 from fastapi import FastAPI
 from fastapi.responses import StreamingResponse
-from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+# Make project root importable (Vercel runs from repo root)
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from agent import run_agent_stream
 
-app = FastAPI(title="Vulcan OmniPro 220 AI Assistant")
+app = FastAPI()
 _pool = ThreadPoolExecutor(max_workers=4)
 
 
 class ChatRequest(BaseModel):
     message: str
     images: Optional[list[str]] = None
-    api_key: Optional[str] = None
-    model: Optional[str] = None
+    api_key: Optional[str] = None   # supplied by user in Settings panel
+    model: Optional[str] = None     # optional model override
 
 
 @app.post("/chat")
@@ -30,7 +32,10 @@ async def chat(req: ChatRequest):
 
     def run_sync():
         for event in run_agent_stream(
-            req.message, req.images or [], api_key=req.api_key, model=req.model
+            req.message,
+            req.images or [],
+            api_key=req.api_key,
+            model=req.model,
         ):
             loop.call_soon_threadsafe(queue.put_nowait, event)
         loop.call_soon_threadsafe(queue.put_nowait, None)
@@ -54,8 +59,3 @@ async def chat(req: ChatRequest):
 @app.get("/health")
 async def health():
     return {"status": "ok"}
-
-
-# Serve page images and frontend from public/
-app.mount("/pages", StaticFiles(directory="public/pages"), name="pages")
-app.mount("/", StaticFiles(directory="public", html=True), name="static")

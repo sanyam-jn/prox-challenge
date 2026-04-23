@@ -2,7 +2,6 @@
 __pycache__/
 *.pyc
 .env
-data/pages/
-data/index.json
-data/idf.json
 .DS_Store
+# data/ and public/pages/ are committed (preprocessed artifacts)
+data/pages/

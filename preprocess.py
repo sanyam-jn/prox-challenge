@@ -1,41 +1,41 @@
 """
 Run once to extract text and render page images from the PDFs.
-Output: data/index.json + data/pages/*.png
+Output: data/index.json + data/idf.json + public/pages/*.png
 """
 import fitz  # PyMuPDF
 import json
-import os
 import math
-from pathlib import Path
+import os
 from collections import Counter
+from pathlib import Path
 
 DOCS = [
-    ("files/owner-manual.pdf", "owner-manual"),
+    ("files/owner-manual.pdf",    "owner-manual"),
     ("files/quick-start-guide.pdf", "quick-start-guide"),
-    ("files/selection-chart.pdf", "selection-chart"),
+    ("files/selection-chart.pdf",   "selection-chart"),
 ]
+
 
 def extract_headings(page) -> list[str]:
     headings = []
     try:
-        blocks = page.get_text("dict")["blocks"]
-        for block in blocks:
+        for block in page.get_text("dict")["blocks"]:
             if block.get("type") != 0:
                 continue
             for line in block.get("lines", []):
                 for span in line.get("spans", []):
-                    size = span.get("size", 0)
-                    flags = span.get("flags", 0)
-                    text = span.get("text", "").strip()
-                    if text and (size > 11 or flags & 16):  # bold or large
-                        headings.append(text)
+                    if span.get("text", "").strip() and (
+                        span.get("size", 0) > 11 or span.get("flags", 0) & 16
+                    ):
+                        headings.append(span["text"].strip())
     except Exception:
         pass
     return headings
 
 
 def preprocess():
-    os.makedirs("data/pages", exist_ok=True)
+    Path("data").mkdir(exist_ok=True)
+    Path("public/pages").mkdir(parents=True, exist_ok=True)
     index = []
 
     for pdf_path, doc_name in DOCS:
@@ -53,11 +53,11 @@ def preprocess():
             text = page.get_text("text")
             headings = extract_headings(page)
 
-            # Render at 1.5x for clarity without giant files
+            # Render at 1.5x and save to public/pages/ for static serving
             mat = fitz.Matrix(1.5, 1.5)
             pix = page.get_pixmap(matrix=mat)
             img_filename = f"{doc_name}_p{page_num}.png"
-            pix.save(f"data/pages/{img_filename}")
+            pix.save(f"public/pages/{img_filename}")
 
             index.append({
                 "doc": doc_name,
@@ -69,22 +69,19 @@ def preprocess():
 
         doc.close()
 
-    # Build IDF table for better search scoring
+    # Build TF-IDF index
     N = len(index)
     df: Counter = Counter()
     for entry in index:
-        terms = set(entry["text"].lower().split())
-        df.update(terms)
-
+        df.update(set(entry["text"].lower().split()))
     idf = {t: math.log((N + 1) / (c + 1)) for t, c in df.items()}
 
     with open("data/index.json", "w") as f:
         json.dump(index, f)
-
     with open("data/idf.json", "w") as f:
         json.dump(idf, f)
 
-    print(f"\nDone — {len(index)} pages indexed, images in data/pages/")
+    print(f"\nDone — {len(index)} pages indexed, images in public/pages/")
 
 
 if __name__ == "__main__":
