@@ -19,6 +19,7 @@ This agent closes that gap. Ask it anything about the OmniPro 220 — setup, dut
 - Ask about settings → parameter table with recommended wire size, voltage, feed speed
 - Upload a weld photo → defect diagnosis with causes-and-fixes table
 - Ask about troubleshooting → click-through decision tree
+- Ask follow-up questions → full multi-turn memory across the conversation
 
 ---
 
@@ -59,13 +60,17 @@ The agent has a `get_page_image(doc, page)` tool that returns a rendered 1.5x PN
 ### Agentic loop
 
 ```
-User question
+User question + conversation history
   → search_manual(query)          # find relevant pages by text
   → get_page_image(doc, page)     # read diagrams on those pages
-  → generate response             # HTML/SVG/artifact based on findings
+  → stream response tokens        # HTML/SVG/artifact appears word-by-word
 ```
 
-The agent streams status updates in real time so users see which pages are being read while the response is forming.
+The agent streams status updates in real time so users see which pages are being read while the response is forming. The final response streams token-by-token (Claude Streaming API), appearing as a plain-text preview with a blinking cursor that transitions to fully rendered HTML when generation completes.
+
+### Multi-turn conversation
+
+Each request includes the last 6 exchanges as conversation history, prepended to the messages array before the current user message. History is stored in memory only (never persisted to `localStorage`). The "New conversation" button clears history and resets the UI without a page reload.
 
 ### Visual-first output
 
@@ -83,6 +88,10 @@ The system prompt instructs the agent to never describe a visual when it can ren
 ### Prompt caching
 
 The system prompt (including SVG and table templates) is marked `cache_control: ephemeral`. The Anthropic API caches it between requests, reducing latency and cost on the first tool-call round-trip.
+
+### Artifact iframe sizing
+
+Interactive artifacts are rendered in sandbox iframes (`sandbox="allow-scripts"`). A `postMessage` resize reporter is injected into each artifact at render time — it fires on `load`, on a `ResizeObserver`, and twice on a timeout to catch late-rendering JS. The parent window listens and sets the iframe height to the artifact's actual rendered size, eliminating the blank space that plagues `onload` + `scrollHeight` approaches.
 
 ---
 
