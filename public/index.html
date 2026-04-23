@@ -303,15 +303,14 @@
     </div>
     <div class="settings-body">
       <div class="setting-group">
-        <label>Anthropic API Key</label>
+        <label>API Key</label>
         <input type="password" id="key-input" placeholder="sk-ant-…" autocomplete="off">
         <div class="key-status">
           <div class="key-dot" id="key-dot"></div>
           <span id="key-status-text">No key saved</span>
         </div>
         <p class="hint">
-          Your key is stored only in your browser's localStorage — never sent to any server
-          except Anthropic's API directly.<br>
+          Stored only in your browser — never logged or saved server-side.<br>
           Get a key at <a href="https://console.anthropic.com" target="_blank">console.anthropic.com</a>
         </p>
       </div>
@@ -319,11 +318,11 @@
       <div class="setting-group">
         <label>Model</label>
         <select id="model-select">
-          <option value="claude-sonnet-4-6">Claude Sonnet 4.6 — fast &amp; capable (default)</option>
-          <option value="claude-opus-4-7">Claude Opus 4.7 — most powerful, slower</option>
-          <option value="claude-haiku-4-5-20251001">Claude Haiku 4.5 — fastest, lightweight</option>
+          <option value="claude-sonnet-4-6">Sonnet — fast &amp; capable (recommended)</option>
+          <option value="claude-opus-4-7">Opus — most powerful, best for complex diagrams</option>
+          <option value="claude-haiku-4-5-20251001">Haiku — fastest, great for quick lookups</option>
         </select>
-        <p class="hint">Opus gives the best diagrams; Haiku is fastest for simple lookups.</p>
+        <p class="hint">Opus produces the richest interactive diagrams. Haiku is ~3× faster for simple questions.</p>
       </div>
       <hr class="settings-divider">
       <p class="settings-info">
