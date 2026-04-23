@@ -55,6 +55,12 @@
       background: var(--s2); border: 1px solid var(--border2);
       font-size: 11px; color: var(--dim2);
     }
+    #hdr-new {
+      background: transparent; border: 1px solid var(--border2); border-radius: 7px;
+      color: var(--dim2); padding: 5px 10px; cursor: pointer; font-size: 12px; font-weight: 600;
+      transition: border-color .15s, color .15s;
+    }
+    #hdr-new:hover { border-color: var(--accent); color: var(--accent); }
     #hdr-gear {
       background: transparent; border: 1px solid var(--border2); border-radius: 7px;
       color: var(--dim2); padding: 5px 9px; cursor: pointer; font-size: 14px;
@@ -373,6 +379,7 @@
   </div>
   <div class="header-right">
     <span class="model-pill" id="model-pill">Sonnet</span>
+    <button id="hdr-new" onclick="newChat()" title="New conversation">+ New</button>
     <button id="hdr-gear" onclick="openS()" title="Settings">⚙</button>
   </div>
 </header>
@@ -508,8 +515,18 @@
   const ST = {
     key:   localStorage.getItem('op220_key')   || '',
     model: localStorage.getItem('op220_model') || 'claude-sonnet-4-6',
+    history: [],   // [{role:"user"|"assistant", text:"..."}] — in-memory only
   };
-  let attached = [];
+  let attached   = [];
+  let pendingUser = '';   // text of the in-flight user message
+
+  /* ── postMessage iframe resize ─────────────── */
+  window.addEventListener('message', e => {
+    if (e.data && e.data.type === 'resize' && e.data.id) {
+      const iframe = document.getElementById(e.data.id);
+      if (iframe) iframe.style.height = Math.min(Math.max(e.data.h + 24, 180), 620) + 'px';
+    }
+  });
 
   /* ── Init ──────────────────────────────────── */
   function init() {
@@ -523,12 +540,52 @@
     const txt = document.getElementById('kst');
     const ban = document.getElementById('key-banner');
     if (ST.key) {
-      dot.classList.add('set');  txt.textContent = 'Key saved ✓';
+      dot.classList.add('set'); txt.textContent = 'Key saved ✓';
       ban.style.display = 'none';
     } else {
       dot.classList.remove('set'); txt.textContent = 'No key saved';
       ban.style.display = 'flex';
     }
+  }
+
+  /* ── New conversation ──────────────────────── */
+  function newChat() {
+    ST.history = [];
+    const ci = document.getElementById('chat-inner');
+    ci.innerHTML = '';
+    const welcome = buildWelcome();
+    ci.appendChild(welcome);
+    if (!ST.key) document.getElementById('key-banner') || ci.prepend(buildBanner());
+    document.getElementById('msg').focus();
+  }
+
+  function buildWelcome() {
+    const d = document.createElement('div');
+    d.id = 'welcome';
+    d.innerHTML = `
+      <div class="welcome-head">
+        <div class="welcome-icon">⚡</div>
+        <h1>OmniPro 220 Expert</h1>
+        <p>Ask anything about your welder — duty cycles, polarity, settings, wiring, troubleshooting. Upload a weld photo for instant diagnosis.</p>
+      </div>
+      <div class="caps">
+        <div class="cap"><span class="cap-icon">📊</span><div class="cap-title">Duty Cycle Calculator</div><div class="cap-desc">Interactive sliders for any process, voltage, and amperage — with visual gauge</div></div>
+        <div class="cap"><span class="cap-icon">🔌</span><div class="cap-title">Wiring Diagrams</div><div class="cap-desc">SVG cable-routing diagrams for MIG, TIG, Stick, and Flux-Core polarity setups</div></div>
+        <div class="cap"><span class="cap-icon">⚙</span><div class="cap-title">Settings Configurator</div><div class="cap-desc">Choose process → material → thickness and get wire size, voltage, and feed speed</div></div>
+        <div class="cap"><span class="cap-icon">🔬</span><div class="cap-title">Weld Diagnosis</div><div class="cap-desc">Upload a photo of your weld and get a specific defect diagnosis with fixes</div></div>
+      </div>
+      <div style="display:flex;flex-direction:column;align-items:center;gap:10px;width:100%">
+        <span class="examples-label">Try asking</span>
+        <div class="examples">
+          <button class="ex" onclick="useEx(this)">Duty cycle at 200A on 240V</button>
+          <button class="ex" onclick="useEx(this)">Polarity setup for flux-core</button>
+          <button class="ex" onclick="useEx(this)">TIG torch wiring diagram</button>
+          <button class="ex" onclick="useEx(this)">Settings for MIG on 1/4&quot; steel</button>
+          <button class="ex" onclick="useEx(this)">Troubleshooting flowchart for porosity</button>
+          <button class="ex" onclick="useEx(this)">All duty cycles across processes</button>
+        </div>
+      </div>`;
+    return d;
   }
 
   /* ── Settings ──────────────────────────────── */
@@ -551,10 +608,7 @@
   }
 
   /* ── Textarea ──────────────────────────────── */
-  function grow(el) {
-    el.style.height = 'auto';
-    el.style.height = Math.min(el.scrollHeight, 140) + 'px';
-  }
+  function grow(el) { el.style.height = 'auto'; el.style.height = Math.min(el.scrollHeight, 140) + 'px'; }
   function onKey(e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }
   function useEx(btn) { document.getElementById('msg').value = btn.innerText; grow(document.getElementById('msg')); send(); }
 
@@ -591,6 +645,7 @@
 
     document.getElementById('welcome')?.remove();
 
+    pendingUser = text;
     addUserMsg(text, imgs);
     inp.value = ''; grow(inp);
     attached = []; renderPrev();
@@ -598,52 +653,109 @@
     const { wrap, statusEl } = addLoader();
     document.getElementById('send').disabled = true;
 
+    let streamDiv   = null;   // the streaming bubble div
+    let streamBuf   = '';     // raw response text accumulator
+
     try {
       const res = await fetch('/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          message: text, images: imgs.map(i => i.b64),
-          api_key: ST.key || undefined,
-          model:   ST.model || undefined,
+          message:  text,
+          images:   imgs.map(i => i.b64),
+          api_key:  ST.key  || undefined,
+          model:    ST.model || undefined,
+          history:  ST.history.length ? ST.history : undefined,
         }),
       });
 
       const reader = res.body.getReader();
       const dec    = new TextDecoder();
-      let buf      = '';
+      let sseBuffer = '';
 
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-        buf += dec.decode(value, { stream: true });
-        const lines = buf.split('\n');
-        buf = lines.pop();
+        sseBuffer += dec.decode(value, { stream: true });
+        const lines = sseBuffer.split('\n');
+        sseBuffer = lines.pop();
+
         for (const line of lines) {
           if (!line.startsWith('data: ')) continue;
           const ev = JSON.parse(line.slice(6));
+
           if (ev.type === 'status') {
             const p = document.createElement('div');
             p.className = 'status-line';
             p.textContent = '› ' + ev.text;
             statusEl.appendChild(p);
             statusEl.scrollTop = statusEl.scrollHeight;
+
+          } else if (ev.type === 'chunk') {
+            streamBuf += ev.text;
+            if (!streamDiv) {
+              wrap.remove();
+              streamDiv = startStreamingBubble();
+            }
+            updateStreamingBubble(streamDiv, streamBuf);
+
+          } else if (ev.type === 'done') {
+            if (streamDiv) streamDiv.remove();
+            else wrap.remove();
+            addAgentMsg(streamBuf);
+            pushHistory(pendingUser, streamBuf);
+            streamDiv = null; streamBuf = '';
+
           } else if (ev.type === 'response') {
+            // Fallback for older server versions
             wrap.remove();
             addAgentMsg(ev.text);
+            pushHistory(pendingUser, ev.text);
+
           } else if (ev.type === 'error') {
-            wrap.remove();
+            if (streamDiv) streamDiv.remove(); else wrap.remove();
             addAgentMsg(`<div class="warn-box">⚠ ${esc(ev.text)}</div>`);
+            streamDiv = null; streamBuf = '';
           }
         }
       }
     } catch (err) {
-      wrap.remove();
+      if (streamDiv) streamDiv.remove(); else wrap.remove();
       addAgentMsg(`<div class="warn-box">⚠ ${esc(err.message)}</div>`);
     } finally {
       document.getElementById('send').disabled = false;
       inp.focus();
     }
+  }
+
+  function pushHistory(userText, agentRaw) {
+    if (!userText && !agentRaw) return;
+    ST.history.push({ role: 'user',      text: userText });
+    ST.history.push({ role: 'assistant', text: agentRaw.substring(0, 2000) });
+    if (ST.history.length > 12) ST.history = ST.history.slice(-12);
+  }
+
+  /* ── Streaming bubble (plain-text preview) ─── */
+  function startStreamingBubble() {
+    const ci  = document.getElementById('chat-inner');
+    const div = document.createElement('div');
+    div.className = 'msg agent';
+    div.innerHTML = `
+      <div class="msg-meta"><div class="msg-dot"></div>OmniPro Assistant</div>
+      <div class="bubble"><div class="stream-preview"></div><span class="stream-cursor">▌</span></div>`;
+    ci.appendChild(div);
+    document.getElementById('chat').scrollTop = 99999;
+    return div;
+  }
+
+  function updateStreamingBubble(div, raw) {
+    // Show non-HTML text portions as a clean preview while streaming
+    const preview = raw
+      .replace(/<artifact[\s\S]*?<\/artifact>/gi, '\n[⚡ Interactive tool building…]\n')
+      .replace(/<[^>]+>/g, '')
+      .trim();
+    div.querySelector('.stream-preview').textContent = preview;
+    document.getElementById('chat').scrollTop = 99999;
   }
 
   /* ── Message builders ──────────────────────── */
@@ -664,7 +776,6 @@
     const ci  = document.getElementById('chat-inner');
     const div = document.createElement('div');
     div.className = `msg ${role}`;
-    const dot = role === 'user' ? '' : '';
     div.innerHTML = `
       <div class="msg-meta"><div class="msg-dot"></div>${label}</div>
       <div class="bubble">${html}</div>`;
@@ -701,6 +812,7 @@
   }
 
   function buildArtifact({ title, html }) {
+    const iframeId = 'af-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7);
     const frame = document.createElement('div');
     frame.className = 'artifact-frame';
     frame._html  = html;
@@ -713,16 +825,14 @@
         <span style="margin-left:8px">${esc(title)}</span>
         <button class="exp-btn" onclick="openLb(this)">⤢ Expand</button>
       </div>
-      <iframe class="artifact-iframe" sandbox="allow-scripts" title="${esc(title)}"></iframe>`;
+      <iframe id="${iframeId}" class="artifact-iframe" sandbox="allow-scripts" title="${esc(title)}"></iframe>`;
+
+    // Inject a postMessage resize reporter into the artifact HTML
+    const resizeScript = `<script>(function(){var id="${iframeId}";function r(){window.parent.postMessage({type:"resize",id:id,h:document.documentElement.scrollHeight},"*");}window.addEventListener("load",r);setTimeout(r,150);setTimeout(r,600);new ResizeObserver(r).observe(document.body);})();<\/script>`;
+    const injectedHtml = html.includes('</body>') ? html.replace('</body>', resizeScript + '</body>') : html + resizeScript;
 
     const iframe = frame.querySelector('iframe');
-    iframe.srcdoc = html;
-    iframe.onload = () => {
-      try {
-        const h = iframe.contentDocument?.body?.scrollHeight;
-        if (h) iframe.style.height = Math.min(Math.max(h + 20, 180), 600) + 'px';
-      } catch(_) {}
-    };
+    iframe.srcdoc = injectedHtml;
     return frame;
   }
 
@@ -743,6 +853,7 @@
 
   /* ── Markdown renderer ─────────────────────── */
   function renderMd(text) {
+    // Split on block-level HTML tags, pass them through, process plain text segments
     const parts = text.split(/(<(?:div|table|svg|thead|tbody|tr|th|td|ul|ol|li|h[1-6]|img|pre|hr|br)[^>]*(?:\/>|>[\s\S]*?<\/(?:div|table|svg|thead|tbody|tr|th|td|ul|ol|li|h[1-6]|pre)>))/gi);
     return parts.map((p, i) => {
       if (i % 2 === 1) return p;
@@ -762,6 +873,11 @@
   function esc(s) {
     return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
   }
+
+  /* ── Streaming cursor style ────────────────── */
+  const cursorStyle = document.createElement('style');
+  cursorStyle.textContent = `.stream-cursor{display:inline-block;animation:blink 1s step-end infinite;color:var(--accent);font-size:16px;line-height:1;margin-left:1px}@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}`;
+  document.head.appendChild(cursorStyle);
 
   init();
   document.getElementById('msg').focus();

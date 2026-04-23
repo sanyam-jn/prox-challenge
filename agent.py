@@ -189,12 +189,14 @@ def run_agent_stream(
     images_b64: list[str] | None = None,
     api_key: str | None = None,
     model: str | None = None,
+    history: list[dict] | None = None,
 ) -> Generator[dict, None, None]:
     """
     Yields event dicts:
-      {"type": "status",   "text": "..."}
-      {"type": "response", "text": "..."}
-      {"type": "error",    "text": "..."}
+      {"type": "status",   "text": "..."}   — tool activity
+      {"type": "chunk",    "text": "..."}   — streaming response token
+      {"type": "done"}                       — response complete
+      {"type": "error",    "text": "..."}   — error
     """
     key = api_key or os.getenv("ANTHROPIC_API_KEY")
     if not key:
@@ -204,6 +206,7 @@ def run_agent_stream(
     client = anthropic.Anthropic(api_key=key)
     active_model = model or DEFAULT_MODEL
 
+    # Build current user message content
     user_content: list = []
     for img in (images_b64 or []):
         media_type = "image/png" if img.startswith("iVBOR") else "image/jpeg"
@@ -213,26 +216,38 @@ def run_agent_stream(
         })
     user_content.append({"type": "text", "text": message})
 
-    messages = [{"role": "user", "content": user_content}]
+    # Build messages array — prepend conversation history
+    messages: list = []
+    for h in (history or []):
+        role = h.get("role")
+        text = h.get("text", "")
+        if role in ("user", "assistant") and text:
+            messages.append({"role": role, "content": [{"type": "text", "text": text}]})
+
+    messages.append({"role": "user", "content": user_content})
+
     system = [{"type": "text", "text": SYSTEM_PROMPT, "cache_control": {"type": "ephemeral"}}]
 
     try:
         while True:
-            response = client.messages.create(
+            # Stream each API call; text_stream yields nothing for tool-use rounds,
+            # and yields the full response for the final text round.
+            with client.messages.stream(
                 model=active_model,
                 max_tokens=8192,
                 system=system,
                 tools=TOOLS,
                 messages=messages,
                 extra_headers={"anthropic-beta": "prompt-caching-2024-07-31"},
-            )
+            ) as stream:
+                for text_chunk in stream.text_stream:
+                    yield {"type": "chunk", "text": text_chunk}
+                response = stream.get_final_message()
 
             tool_uses = [b for b in response.content if b.type == "tool_use"]
 
             if not tool_uses:
-                yield {"type": "response", "text": "".join(
-                    b.text for b in response.content if b.type == "text"
-                )}
+                yield {"type": "done"}
                 return
 
             messages.append({"role": "assistant", "content": response.content})

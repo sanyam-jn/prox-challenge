@@ -21,6 +21,7 @@ class ChatRequest(BaseModel):
     images: Optional[list[str]] = None
     api_key: Optional[str] = None
     model: Optional[str] = None
+    history: Optional[list[dict]] = None
 
 
 @app.post("/chat")
@@ -30,7 +31,8 @@ async def chat(req: ChatRequest):
 
     def run_sync():
         for event in run_agent_stream(
-            req.message, req.images or [], api_key=req.api_key, model=req.model
+            req.message, req.images or [], api_key=req.api_key, model=req.model,
+            history=req.history or [],
         ):
             loop.call_soon_threadsafe(queue.put_nowait, event)
         loop.call_soon_threadsafe(queue.put_nowait, None)

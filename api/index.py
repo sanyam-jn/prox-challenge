@@ -21,8 +21,9 @@ _pool = ThreadPoolExecutor(max_workers=4)
 class ChatRequest(BaseModel):
     message: str
     images: Optional[list[str]] = None
-    api_key: Optional[str] = None   # supplied by user in Settings panel
-    model: Optional[str] = None     # optional model override
+    api_key: Optional[str] = None
+    model: Optional[str] = None
+    history: Optional[list[dict]] = None
 
 
 @app.post("/chat")
@@ -36,6 +37,7 @@ async def chat(req: ChatRequest):
             req.images or [],
             api_key=req.api_key,
             model=req.model,
+            history=req.history or [],
         ):
             loop.call_soon_threadsafe(queue.put_nowait, event)
         loop.call_soon_threadsafe(queue.put_nowait, None)
