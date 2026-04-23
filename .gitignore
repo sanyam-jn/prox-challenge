@@ -5,3 +5,4 @@ __pycache__/
 .DS_Store
 # data/ and public/pages/ are committed (preprocessed artifacts)
 data/pages/
+.vercel
