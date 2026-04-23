@@ -1,13 +1,15 @@
-"""FastAPI server — serves the frontend and proxies chat requests to the agent."""
+"""FastAPI server — SSE streaming chat + static pages."""
 import asyncio
+import json
 from concurrent.futures import ThreadPoolExecutor
 from typing import Optional
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
+from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from agent import run_agent
+from agent import run_agent_stream
 
 app = FastAPI(title="Vulcan OmniPro 220 AI Assistant")
 _pool = ThreadPoolExecutor(max_workers=4)
@@ -15,23 +17,37 @@ _pool = ThreadPoolExecutor(max_workers=4)
 
 class ChatRequest(BaseModel):
     message: str
-    images: Optional[list[str]] = None  # base64-encoded
+    images: Optional[list[str]] = None
 
 
-class ChatResponse(BaseModel):
-    response: str
-
-
-@app.post("/chat", response_model=ChatResponse)
+@app.post("/chat")
 async def chat(req: ChatRequest):
-    try:
-        loop = asyncio.get_event_loop()
-        result = await loop.run_in_executor(
-            _pool, run_agent, req.message, req.images or []
-        )
-        return ChatResponse(response=result)
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=str(exc))
+    """SSE stream of agent events: status updates then final response."""
+    queue: asyncio.Queue = asyncio.Queue()
+    loop = asyncio.get_event_loop()
+
+    def run_sync():
+        for event in run_agent_stream(req.message, req.images or []):
+            loop.call_soon_threadsafe(queue.put_nowait, event)
+        loop.call_soon_threadsafe(queue.put_nowait, None)  # sentinel
+
+    _pool.submit(run_sync)
+
+    async def generate():
+        while True:
+            event = await queue.get()
+            if event is None:
+                break
+            yield f"data: {json.dumps(event)}\n\n"
+
+    return StreamingResponse(
+        generate(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @app.get("/health")
@@ -39,5 +55,8 @@ async def health():
     return {"status": "ok"}
 
 
-# Static frontend — must be mounted last
+# Serve rendered page images so the agent can embed them in responses
+app.mount("/pages", StaticFiles(directory="data/pages"), name="pages")
+
+# Frontend — must be last
 app.mount("/", StaticFiles(directory="static", html=True), name="static")
